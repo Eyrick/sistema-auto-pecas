@@ -2,8 +2,7 @@
 
 import { Storage } from './storage.js';
 import { gerarId, mostrarToast, fecharModal } from './utils.js';
-import { atualizarUI, populateSelects, renderEstoque, renderDashboard } from './ui.js';
-import { confirmarAcao } from './ui.js';
+import { atualizarUI, populateSelects, renderEstoque, renderDashboard, confirmarAcao } from './ui.js';
 
 // Estado global dos produtos
 export let produtos = Storage.getProdutos();
@@ -11,13 +10,10 @@ export let editProdId = null;
 
 /**
  * Salva um novo produto ou atualiza um existente
- * @param {Object} dados - Dados do produto
- * @returns {boolean} Sucesso da operação
  */
 export function salvarProduto(dados) {
   const { codigo, nome, categoria, desc, qty, min, custo, venda, localizacao, marca } = dados;
   
-  // Validação básica
   if (!nome || !codigo) {
     mostrarToast('Preencha nome e código!', 'error');
     return false;
@@ -44,14 +40,12 @@ export function salvarProduto(dados) {
   };
 
   if (editProdId) {
-    // Atualização
     const idx = produtos.findIndex(p => p.id === editProdId);
     if (idx >= 0) {
       produtos[idx] = produto;
       mostrarToast('✅ Peça atualizada com sucesso!');
     }
   } else {
-    // Criação - verifica código duplicado
     if (produtos.find(p => p.codigo === produto.codigo)) {
       mostrarToast('❌ Código já existe!', 'error');
       return false;
@@ -70,8 +64,6 @@ export function salvarProduto(dados) {
 
 /**
  * Carrega os dados de um produto para edição
- * @param {number} id - ID do produto
- * @returns {Object|null} Dados do produto ou null
  */
 export function editarProduto(id) {
   const produto = produtos.find(p => p.id === id);
@@ -83,10 +75,22 @@ export function editarProduto(id) {
 
 /**
  * Exclui um produto do estoque
- * @param {number} id - ID do produto
- * @returns {boolean} Sucesso da operação
  */
+export function excluirProduto(id) {
+  const produto = produtos.find(p => p.id === id);
+  if (!produto) return false;
+  
+  produtos = produtos.filter(p => p.id !== id);
+  Storage.setProdutos(produtos);
+  atualizarUI();
+  mostrarToast('🗑️ Peça removida do estoque');
+  
+  return true;
+}
 
+/**
+ * Solicita confirmação para excluir um produto
+ */
 export function solicitarExclusaoProduto(id) {
   const produto = produtos.find(p => p.id === id);
   if (!produto) return;
@@ -94,18 +98,12 @@ export function solicitarExclusaoProduto(id) {
   confirmarAcao(
     '🗑️ Excluir Peça',
     `Tem certeza que deseja excluir permanentemente "${produto.nome}"?`,
-    () => {
-      produtos = produtos.filter(p => p.id !== id);
-      Storage.setProdutos(produtos);
-      atualizarUI();
-      mostrarToast('✅ Peça removida com sucesso!');
-    }
+    () => excluirProduto(id)
   );
 }
 
 /**
  * Retorna lista única de categorias ordenadas
- * @returns {Array} Lista de categorias
  */
 export function getCategorias() {
   return [...new Set(produtos.map(p => p.categoria))].sort();
@@ -113,8 +111,6 @@ export function getCategorias() {
 
 /**
  * Busca um produto pelo ID
- * @param {number} id - ID do produto
- * @returns {Object|undefined} Produto encontrado
  */
 export function getProdutoPorId(id) {
   return produtos.find(p => p.id === id);

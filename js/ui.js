@@ -1,30 +1,65 @@
 // ui.js - Gerenciamento da interface do usuário
 
-import { produtos, getCategorias, editarProduto, excluirProduto, limparFormProduto, editProdId } from './produtos.js';
-import { movimentos, getMovimentosFiltrados, getSaidaItems, adicionarItemSaida, removerItemSaida, calcularTotaisSaida, finalizarSaida, cancelarSaida, registrarEntrada, limparFormEntrada } from './movimentos.js';
-import { notas, getNota, gerarHTMLNota, imprimirNota, getTodasNotas } from './notas.js';
-import { formatarMoeda, formatarData, mostrarToast, abrirModal, fecharModal, validarCPF, validarCNPJ, validarDocumento } from './utils.js';
+import { 
+  produtos, 
+  getCategorias, 
+  editarProduto, 
+  excluirProduto,
+  solicitarExclusaoProduto,
+  limparFormProduto, 
+  editProdId 
+} from './produtos.js';
 
-// Estado da UI
+import { 
+  movimentos, 
+  getMovimentosFiltrados, 
+  getSaidaItems, 
+  adicionarItemSaida, 
+  removerItemSaida, 
+  calcularTotaisSaida, 
+  finalizarSaida, 
+  cancelarSaida, 
+  registrarEntrada, 
+  limparFormEntrada 
+} from './movimentos.js';
+
+import { 
+  notas, 
+  getNota, 
+  gerarHTMLNota, 
+  imprimirNota, 
+  getTodasNotas 
+} from './notas.js';
+
+import { 
+  formatarMoeda, 
+  formatarData, 
+  mostrarToast, 
+  abrirModal, 
+  fecharModal,
+  validarCPF,
+  validarCNPJ,
+  limparMascara
+} from './utils.js';
+
+// ===== ESTADO DA UI =====
 let paginaAtual = 'dashboard';
 let filtroMovimentos = 'todos';
+let confirmCallback = null;
+
+// ===== NOTIFICAÇÕES =====
+let notificacaoAtiva = false;
+let intervaloNotificacao = null;
+let chartCategorias = null;
 
 // ===== NAVEGAÇÃO =====
-
-/**
- * Muda a página ativa
- * @param {string} nome - Nome da página
- */
 export function mostrarPagina(nome) {
-  // Atualiza classes das páginas
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(`page-${nome}`).classList.add('active');
   
-  // Atualiza botões de navegação
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelector(`[data-page="${nome}"]`)?.classList.add('active');
   
-  // Atualiza título
   const titulos = {
     dashboard: 'Dashboard',
     estoque: 'Estoque',
@@ -39,9 +74,6 @@ export function mostrarPagina(nome) {
   renderizarPaginaAtual();
 }
 
-/**
- * Renderiza a página atual
- */
 function renderizarPaginaAtual() {
   switch(paginaAtual) {
     case 'dashboard': renderDashboard(); break;
@@ -54,7 +86,6 @@ function renderizarPaginaAtual() {
 }
 
 // ===== DASHBOARD =====
-
 export function renderDashboard() {
   const total = produtos.length;
   const valorEstoque = produtos.reduce((s, p) => s + (p.custo * p.qty), 0);
@@ -64,9 +95,12 @@ export function renderDashboard() {
   document.getElementById('stat-valor').textContent = 'R$ ' + formatarMoeda(valorEstoque);
   document.getElementById('stat-baixo').textContent = criticos.length;
   document.getElementById('stat-notas').textContent = notas.length;
-  document.getElementById('alert-badge').textContent = `● ${criticos.length} ALERTA${criticos.length !== 1 ? 'S' : ''}`;
   
-  // Lista de itens críticos
+  const badge = document.getElementById('alert-badge');
+  if (badge) {
+    badge.textContent = `● ${criticos.length} ALERTA${criticos.length !== 1 ? 'S' : ''}`;
+  }
+  
   const listaBaixo = document.getElementById('lista-baixo');
   if (criticos.length === 0) {
     listaBaixo.innerHTML = '<p style="color:var(--text3);padding:20px;text-align:center">✅ Nenhum item crítico.</p>';
@@ -83,7 +117,6 @@ export function renderDashboard() {
     `).join('');
   }
   
-  // Últimos movimentos
   const recentes = [...movimentos].reverse().slice(0, 6);
   const listaMov = document.getElementById('lista-mov-dash');
   if (recentes.length === 0) {
@@ -100,58 +133,69 @@ export function renderDashboard() {
       </div>
     `).join('');
   }
-	 // Renderiza o gráfico
+  
   renderGraficoCategorias();
 }
 
+// ===== GRÁFICO =====
+export function renderGraficoCategorias() {
+  const canvas = document.getElementById('chart-categorias');
+  if (!canvas || typeof Chart === 'undefined') return;
+  
+  const categorias = {};
+  produtos.forEach(p => {
+    categorias[p.categoria] = (categorias[p.categoria] || 0) + 1;
+  });
+  
+  const labels = Object.keys(categorias);
+  const data = Object.values(categorias);
+  const cores = ['#f97316', '#22c55e', '#3b82f6', '#ef4444', '#eab308', '#8b5cf6', '#ec4899', '#06b6d4', '#f59e0b', '#10b981'];
+  
+  if (chartCategorias) {
+    chartCategorias.destroy();
+  }
+  
+  chartCategorias = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: cores.slice(0, labels.length),
+        borderWidth: 2,
+        borderColor: '#1e242d'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { color: '#e2e8f0', font: { family: 'Barlow', size: 12 } }
+        }
+      }
+    }
+  });
+}
+
 // ===== ESTOQUE =====
-
-// Estado dos filtros avançados
-let filtrosAvancados = {
-  status: '',
-  precoMin: null,
-  precoMax: null,
-  ordem: 'nome-asc'
-};
-
 export function renderEstoque() {
   const search = document.getElementById('search-estoque')?.value.toLowerCase() || '';
   const cat = document.getElementById('filter-cat')?.value || '';
-  
-  // Lê filtros avançados
   const status = document.getElementById('filter-status')?.value || '';
-  const precoMinInput = document.getElementById('filter-preco-min')?.value || '';
-  const precoMaxInput = document.getElementById('filter-preco-max')?.value || '';
   const ordem = document.getElementById('filter-ordem')?.value || 'nome-asc';
   
-  const precoMin = precoMinInput ? parseFloat(precoMinInput.replace(/\D/g, '')) / 100 : null;
-  const precoMax = precoMaxInput ? parseFloat(precoMaxInput.replace(/\D/g, '')) / 100 : null;
-  
   let lista = produtos.filter(p => {
-    // Filtro de busca
-    const matchSearch = !search || 
-      p.nome.toLowerCase().includes(search) || 
-      p.codigo.toLowerCase().includes(search) ||
-      (p.categoria || '').toLowerCase().includes(search);
-    
-    // Filtro de categoria
+    const matchSearch = !search || p.nome.toLowerCase().includes(search) || p.codigo.toLowerCase().includes(search);
     const matchCat = !cat || p.categoria === cat;
-    
-    // Filtro de status
     let matchStatus = true;
     if (status === 'ok') matchStatus = p.qty > p.min;
     else if (status === 'baixo') matchStatus = p.qty <= p.min && p.qty > 0;
     else if (status === 'zerado') matchStatus = p.qty === 0;
-    
-    // Filtro de preço
-    let matchPreco = true;
-    if (precoMin !== null) matchPreco = matchPreco && p.venda >= precoMin;
-    if (precoMax !== null) matchPreco = matchPreco && p.venda <= precoMax;
-    
-    return matchSearch && matchCat && matchStatus && matchPreco;
+    return matchSearch && matchCat && matchStatus;
   });
   
-  // Ordenação
   switch (ordem) {
     case 'nome-asc': lista.sort((a, b) => a.nome.localeCompare(b.nome)); break;
     case 'nome-desc': lista.sort((a, b) => b.nome.localeCompare(a.nome)); break;
@@ -161,7 +205,6 @@ export function renderEstoque() {
     case 'qty-desc': lista.sort((a, b) => b.qty - a.qty); break;
   }
   
-  // Popula filtro de categorias
   const filterCat = document.getElementById('filter-cat');
   if (filterCat) {
     const cats = getCategorias();
@@ -170,13 +213,12 @@ export function renderEstoque() {
       cats.map(c => `<option ${c === currentVal ? 'selected' : ''}>${c}</option>`).join('');
   }
   
-  // Atualiza contador
-  document.getElementById('count-estoque').textContent = `${lista.length} itens encontrados`;
+  const countEl = document.getElementById('count-estoque');
+  if (countEl) countEl.textContent = `${lista.length} itens encontrados`;
   
-  // Renderiza tabela
   const tbody = document.getElementById('tbody-estoque');
   if (lista.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text3)">Nenhuma peça encontrada com os filtros aplicados.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px">Nenhuma peça encontrada.</td></tr>`;
     return;
   }
   
@@ -188,27 +230,21 @@ export function renderEstoque() {
     return `
       <tr>
         <td><span class="code-tag">${p.codigo}</span></td>
-        <td>
-          <div style="font-weight:600">${p.nome}</div>
-          <div style="font-size:11px;color:var(--text3)">${p.marca||''}</div>
-        </td>
-        <td style="color:var(--text2)">${p.categoria}</td>
-        <td style="font-size:12px;color:var(--text3)">${p.localizacao||'—'}</td>
-        <td style="font-family:var(--font-mono);font-size:15px;font-weight:700">${p.qty}</td>
-        <td style="font-family:var(--font-mono);color:var(--text3)">${p.min}</td>
+        <td><div style="font-weight:600">${p.nome}</div><div style="font-size:11px;color:var(--text3)">${p.marca||''}</div></td>
+        <td>${p.categoria}</td>
+        <td>${p.localizacao||'—'}</td>
+        <td>${p.qty}</td>
+        <td>${p.min}</td>
         <td><span class="stock-badge ${statusCls}">${statusTxt}</span></td>
-        <td style="font-family:var(--font-mono)">R$ ${formatarMoeda(p.venda)}</td>
+        <td>R$ ${formatarMoeda(p.venda)}</td>
         <td>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-ghost btn-sm btn-editar-produto" data-id="${p.id}">✏️</button>
-            <button class="btn btn-red btn-sm btn-excluir-produto" data-id="${p.id}">🗑️</button>
-          </div>
+          <button class="btn btn-ghost btn-sm btn-editar-produto" data-id="${p.id}">✏️</button>
+          <button class="btn btn-red btn-sm btn-excluir-produto" data-id="${p.id}">🗑️</button>
         </td>
       </tr>
     `;
   }).join('');
   
-  // Reaplica event listeners
   document.querySelectorAll('.btn-editar-produto').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = parseInt(btn.dataset.id);
@@ -238,41 +274,24 @@ export function renderEstoque() {
   });
 }
 
-/**
- * Limpa todos os filtros avançados
- */
-function limparFiltrosAvancados() {
-  document.getElementById('search-estoque').value = '';
-  document.getElementById('filter-cat').value = '';
-  document.getElementById('filter-status').value = '';
-  document.getElementById('filter-preco-min').value = '';
-  document.getElementById('filter-preco-max').value = '';
-  document.getElementById('filter-ordem').value = 'nome-asc';
-  renderEstoque();
-}
-
 // ===== MOVIMENTOS =====
-
 export function renderMovimentos() {
   const lista = getMovimentosFiltrados(filtroMovimentos);
   const tbody = document.getElementById('tbody-mov');
   
   if (lista.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Nenhum movimento.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px">Nenhum movimento.</td></tr>`;
     return;
   }
   
   tbody.innerHTML = lista.map(m => `
     <tr>
-      <td style="font-size:12px;color:var(--text3);font-family:var(--font-mono)">${formatarData(m.data)}</td>
+      <td>${formatarData(m.data)}</td>
       <td><span class="stock-badge ${m.tipo === 'entrada' ? 'stock-ok' : 'stock-out'}">${m.tipo.toUpperCase()}</span></td>
-      <td>
-        <div style="font-weight:600">${m.peca}</div>
-        <div style="font-size:11px;color:var(--text3)">${m.codigo}</div>
-      </td>
-      <td style="font-family:var(--font-mono);font-weight:700;color:${m.tipo==='entrada'?'var(--green)':'var(--red)'}">${m.tipo==='entrada'?'+':'-'}${m.qty}</td>
+      <td><div style="font-weight:600">${m.peca}</div><div style="font-size:11px">${m.codigo}</div></td>
+      <td style="color:${m.tipo==='entrada'?'var(--green)':'var(--red)'}">${m.tipo==='entrada'?'+':'-'}${m.qty}</td>
       <td>${m.resp||'—'}</td>
-      <td style="font-size:12px;color:var(--text3)">${m.obs||'—'}</td>
+      <td>${m.obs||'—'}</td>
     </tr>
   `).join('');
 }
@@ -282,25 +301,24 @@ export function setFiltroMovimentos(filtro) {
   renderMovimentos();
 }
 
-// ===== NOTAS FISCAIS =====
-
+// ===== NOTAS =====
 export function renderNotas() {
   const tbody = document.getElementById('tbody-notas');
   const lista = getTodasNotas();
   
   if (lista.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">Nenhuma nota emitida.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px">Nenhuma nota emitida.</td></tr>`;
     return;
   }
   
   tbody.innerHTML = lista.map(n => `
     <tr>
       <td><span class="code-tag">NF-${n.numero}</span></td>
-      <td style="font-size:12px;font-family:var(--font-mono)">${formatarData(n.data)}</td>
-      <td style="font-weight:600">${n.cliente}</td>
-      <td style="font-size:12px;color:var(--text3)">${n.doc||'—'}</td>
+      <td>${formatarData(n.data)}</td>
+      <td>${n.cliente}</td>
+      <td>${n.doc||'—'}</td>
       <td>${n.itens.length} item(s)</td>
-      <td style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">R$ ${formatarMoeda(n.total)}</td>
+      <td>R$ ${formatarMoeda(n.total)}</td>
       <td>${n.pagamento}</td>
       <td><button class="btn btn-blue btn-sm btn-ver-nf" data-nf="${n.numero}">🧾 Ver</button></td>
     </tr>
@@ -319,38 +337,26 @@ export function renderNotas() {
 }
 
 // ===== SAÍDA =====
-
 export function renderSaidaItems() {
   const items = getSaidaItems();
   const el = document.getElementById('out-items');
   
   if (items.length === 0) {
-    el.innerHTML = '<p style="color:var(--text3);font-size:13px;text-align:center;padding:20px">Nenhum item adicionado.</p>';
+    el.innerHTML = '<p style="color:var(--text3);text-align:center;padding:20px">Nenhum item adicionado.</p>';
     atualizarTotaisSaida();
     return;
   }
   
   el.innerHTML = `
     <table style="width:100%;font-size:13px">
-      <thead>
-        <tr>
-          <th>Peça</th>
-          <th>Qtd</th>
-          <th>Unit.</th>
-          <th>Total</th>
-          <th></th>
-        </tr>
-      </thead>
+      <thead><tr><th>Peça</th><th>Qtd</th><th>Unit.</th><th>Total</th><th></th></tr></thead>
       <tbody>
         ${items.map((i, idx) => `
           <tr>
-            <td>
-              <div style="font-weight:600">${i.nome}</div>
-              <div style="font-size:11px;color:var(--text3)">${i.codigo}</div>
-            </td>
-            <td style="font-family:var(--font-mono)">${i.qty}</td>
-            <td style="font-family:var(--font-mono)">R$ ${formatarMoeda(i.preco)}</td>
-            <td style="font-family:var(--font-mono);font-weight:700">R$ ${formatarMoeda(i.preco * i.qty)}</td>
+            <td><div style="font-weight:600">${i.nome}</div><div style="font-size:11px">${i.codigo}</div></td>
+            <td>${i.qty}</td>
+            <td>R$ ${formatarMoeda(i.preco)}</td>
+            <td>R$ ${formatarMoeda(i.preco * i.qty)}</td>
             <td><button class="btn btn-red btn-sm btn-remover-item" data-idx="${idx}">✕</button></td>
           </tr>
         `).join('')}
@@ -360,8 +366,7 @@ export function renderSaidaItems() {
   
   document.querySelectorAll('.btn-remover-item').forEach(btn => {
     btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.idx);
-      removerItemSaida(idx);
+      removerItemSaida(parseInt(btn.dataset.idx));
       renderSaidaItems();
     });
   });
@@ -381,7 +386,6 @@ function atualizarTotaisSaida() {
 }
 
 // ===== SELECTS =====
-
 export function populateSelects() {
   const selects = ['ent-peca', 'out-peca'];
   selects.forEach(id => {
@@ -393,227 +397,14 @@ export function populateSelects() {
 }
 
 // ===== ATUALIZAÇÃO GERAL =====
-
 export function atualizarUI() {
   populateSelects();
   renderizarPaginaAtual();
 }
 
-// ===== INICIALIZAÇÃO DE EVENTOS =====
-
-export function inicializarEventos() {
-  // Navegação
-  document.querySelectorAll('[data-page]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const page = e.currentTarget.dataset.page;
-      mostrarPagina(page);
-    });
-  });
-  
-  // Modais - abrir
-  document.querySelectorAll('[data-modal]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const modal = e.currentTarget.dataset.modal;
-      if (modal === 'modal-produto') {
-        limparFormProduto();
-      }
-      abrirModal(modal);
-    });
-  });
-  
-  // Modais - fechar
-  document.querySelectorAll('[data-close-modal]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const modal = e.currentTarget.dataset.closeModal;
-      fecharModal(modal);
-    });
-  });
-  
-  // Fechar modal ao clicar fora
-  document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) {
-        overlay.classList.remove('open');
-      }
-    });
-  });
-  
-  // Salvar produto
-  document.getElementById('btn-salvar-produto')?.addEventListener('click', () => {
-    const dados = {
-      codigo: document.getElementById('prod-codigo').value,
-      nome: document.getElementById('prod-nome').value,
-      categoria: document.getElementById('prod-cat').value,
-      desc: document.getElementById('prod-desc').value,
-      qty: document.getElementById('prod-qty').value,
-      min: document.getElementById('prod-min').value,
-      custo: document.getElementById('prod-custo').value,
-      venda: document.getElementById('prod-venda').value,
-      localizacao: document.getElementById('prod-loc').value,
-      marca: document.getElementById('prod-marca').value
-    };
-    
-    import('./produtos.js').then(module => {
-      module.salvarProduto(dados);
-    });
-  });
-  
-  // Busca no estoque
-  document.getElementById('search-estoque')?.addEventListener('input', renderEstoque);
-  document.getElementById('filter-cat')?.addEventListener('change', renderEstoque);
-  
-  // Filtros de movimentos
-  document.querySelectorAll('[data-mov-filter]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const filtro = e.currentTarget.dataset.movFilter;
-      document.querySelectorAll('[data-mov-filter]').forEach(b => b.classList.remove('active'));
-      e.currentTarget.classList.add('active');
-      setFiltroMovimentos(filtro);
-    });
-  });
-
-	// Filtros avançados do estoque
-document.getElementById('filter-status')?.addEventListener('change', renderEstoque);
-document.getElementById('filter-preco-min')?.addEventListener('input', renderEstoque);
-document.getElementById('filter-preco-max')?.addEventListener('input', renderEstoque);
-document.getElementById('filter-ordem')?.addEventListener('change', renderEstoque);
-document.getElementById('btn-limpar-filtros')?.addEventListener('click', limparFiltrosAvancados);
-  
-  // Entrada
-  document.getElementById('btn-confirmar-entrada')?.addEventListener('click', () => {
-    const pecaId = parseInt(document.getElementById('ent-peca').value);
-    const qty = parseInt(document.getElementById('ent-qty').value);
-    const resp = document.getElementById('ent-resp').value;
-    const obs = document.getElementById('ent-obs').value;
-    
-    if (registrarEntrada(pecaId, qty, resp, obs)) {
-      limparFormEntrada();
-    }
-  });
-  
-  document.getElementById('btn-limpar-entrada')?.addEventListener('click', limparFormEntrada);
-  
-  // Saída - adicionar item
-  document.getElementById('btn-add-item')?.addEventListener('click', () => {
-    const pecaId = parseInt(document.getElementById('out-peca').value);
-    const qty = parseInt(document.getElementById('out-qty').value);
-    
-    if (adicionarItemSaida(pecaId, qty)) {
-      document.getElementById('out-peca').value = '';
-      document.getElementById('out-qty').value = 1;
-      renderSaidaItems();
-    }
-  });
-  
-  // Saída - atualizar total ao mudar desconto
-  document.getElementById('out-desc')?.addEventListener('input', atualizarTotaisSaida);
-  
-  // =========================================================================
-  // ⬇️⬇️⬇️ AQUI É O LOCAL EXATO ONDE VOCÊ VAI ADICIONAR A VALIDAÇÃO ⬇️⬇️⬇️
-  // =========================================================================
-  
-  // Saída - finalizar
-  document.getElementById('btn-finalizar-saida')?.addEventListener('click', () => {
-    const cliente = document.getElementById('out-cliente').value;
-    const doc = document.getElementById('out-doc').value;
-    const pagamento = document.getElementById('out-pag').value;
-    const desconto = parseFloat(document.getElementById('out-desc').value) || 0;
-    
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    // ✅ VALIDAÇÃO DE CPF/CNPJ - ADICIONE ESTE BLOCO INTEIRO AQUI DENTRO
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    if (doc && doc.trim() !== '') {
-      // Importa dinamicamente as funções de validação
-      import('./utils.js').then(({ validarCPF, validarCNPJ }) => {
-        // Remove a máscara para validar apenas os números
-        const numerosDoc = doc.replace(/\D/g, '');
-        
-        // Verifica se é CPF (11 dígitos) ou CNPJ (14 dígitos)
-        if (numerosDoc.length === 11) {
-          if (!validarCPF(doc)) {
-            mostrarToast('CPF inválido! Verifique o número.', 'error');
-            return; // Para a execução aqui
-          }
-        } else if (numerosDoc.length === 14) {
-          if (!validarCNPJ(doc)) {
-            mostrarToast('CNPJ inválido! Verifique o número.', 'error');
-            return; // Para a execução aqui
-          }
-        } else if (numerosDoc.length > 0) {
-          // Se tem números mas não tem 11 nem 14 dígitos
-          mostrarToast('Documento incompleto! Informe CPF (11 dígitos) ou CNPJ (14 dígitos).', 'error');
-          return;
-        }
-        
-        // Se passou na validação, continua com a finalização
-        finalizarVenda();
-      });
-    } else {
-      // Se não tem documento, finaliza direto
-      finalizarVenda();
-    }
-    
-    // Função interna para finalizar a venda
-    function finalizarVenda() {
-      const nota = finalizarSaida({ cliente, doc, pagamento, desconto });
-      if (nota) {
-        // Limpa formulário
-        document.getElementById('out-cliente').value = '';
-        document.getElementById('out-doc').value = '';
-        document.getElementById('out-desc').value = 0;
-        renderSaidaItems();
-        
-        // Mostra a NF
-        document.getElementById('nf-content').innerHTML = gerarHTMLNota(nota);
-        abrirModal('modal-nf');
-      }
-    }
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    // ✅ FIM DA VALIDAÇÃO DE CPF/CNPJ
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    
-  });
-  
-  // =========================================================================
-  // ⬆️⬆️⬆️ FIM DO LOCAL ONDE VOCÊ ADICIONA A VALIDAÇÃO ⬆️⬆️⬆️
-  // =========================================================================
-  
-  // Saída - cancelar
-  document.getElementById('btn-cancelar-saida')?.addEventListener('click', () => {
-    cancelarSaida();
-    document.getElementById('out-cliente').value = '';
-    document.getElementById('out-doc').value = '';
-    document.getElementById('out-desc').value = 0;
-    renderSaidaItems();
-  });
-  
-  // Imprimir NF
-  document.getElementById('btn-imprimir-nf')?.addEventListener('click', () => {
-    const content = document.getElementById('nf-printable');
-    if (content) {
-      imprimirNota(content.outerHTML);
-    }
-  });
-  
-  // Confirmação personalizada
-  document.getElementById('btn-confirmar-acao')?.addEventListener('click', () => {
-    if (confirmCallback) {
-      confirmCallback();
-      confirmCallback = null;
-    }
-    fecharModal('modal-confirmacao');
-  });
-	// ===== NOTIFICAÇÕES DE ESTOQUE BAIXO =====
-
-let notificacaoAtiva = false;
-let intervaloNotificacao = null;
-
-/**
- * Verifica itens com estoque baixo e exibe notificação
- */
+// ===== NOTIFICAÇÕES DE ESTOQUE =====
 export function verificarEstoqueBaixo() {
   const criticos = produtos.filter(p => p.qty <= p.min);
-  
   const badge = document.getElementById('alert-badge');
   if (!badge) return;
   
@@ -624,9 +415,7 @@ export function verificarEstoqueBaixo() {
     if (!notificacaoAtiva) {
       notificacaoAtiva = true;
       const nomesCriticos = criticos.slice(0, 3).map(p => p.nome).join(', ');
-      const mensagem = criticos.length > 3 
-        ? `${nomesCriticos} e mais ${criticos.length - 3} itens...`
-        : `${nomesCriticos}`;
+      const mensagem = criticos.length > 3 ? `${nomesCriticos} e mais ${criticos.length - 3} itens...` : `${nomesCriticos}`;
       mostrarToast(`⚠️ Estoque baixo: ${mensagem}`, 'error');
     }
   } else {
@@ -636,95 +425,145 @@ export function verificarEstoqueBaixo() {
   }
 }
 
-/**
- * Inicia verificação periódica de estoque baixo
- */
 export function iniciarMonitoramentoEstoque() {
-  // Verifica a cada 30 segundos
-  intervaloNotificacao = setInterval(() => {
-    verificarEstoqueBaixo();
-  }, 30000);
-  
-  // Primeira verificação após 2 segundos
+  intervaloNotificacao = setInterval(verificarEstoqueBaixo, 30000);
   setTimeout(verificarEstoqueBaixo, 2000);
 }
 
-/**
- * Para o monitoramento
- */
-export function pararMonitoramentoEstoque() {
-  if (intervaloNotificacao) {
-    clearInterval(intervaloNotificacao);
-    intervaloNotificacao = null;
-  }
+// ===== CONFIRMAÇÃO =====
+export function confirmarAcao(titulo, mensagem, onConfirm) {
+  document.getElementById('confirm-title').textContent = titulo;
+  document.getElementById('confirm-message').textContent = mensagem;
+  confirmCallback = onConfirm;
+  abrirModal('modal-confirmacao');
 }
-// ===== GRÁFICO DO DASHBOARD =====
 
-let chartCategorias = null;
-
-/**
- * Cria/atualiza o gráfico de distribuição por categoria
- */
-export function renderGraficoCategorias() {
-  const canvas = document.getElementById('chart-categorias');
-  if (!canvas) return;
-  
-  // Agrupa produtos por categoria
-  const categorias = {};
-  produtos.forEach(p => {
-    categorias[p.categoria] = (categorias[p.categoria] || 0) + 1;
+// ===== INICIALIZAÇÃO DE EVENTOS =====
+export function inicializarEventos() {
+  document.querySelectorAll('[data-page]').forEach(btn => {
+    btn.addEventListener('click', (e) => mostrarPagina(e.currentTarget.dataset.page));
   });
   
-  const labels = Object.keys(categorias);
-  const data = Object.values(categorias);
+  document.querySelectorAll('[data-modal]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      if (e.currentTarget.dataset.modal === 'modal-produto') limparFormProduto();
+      abrirModal(e.currentTarget.dataset.modal);
+    });
+  });
   
-  // Cores para o gráfico
-  const cores = [
-    '#f97316', '#22c55e', '#3b82f6', '#ef4444', '#eab308',
-    '#8b5cf6', '#ec4899', '#06b6d4', '#f59e0b', '#10b981'
-  ];
+  document.querySelectorAll('[data-close-modal]').forEach(btn => {
+    btn.addEventListener('click', (e) => fecharModal(e.currentTarget.dataset.closeModal));
+  });
   
-  // Destroi gráfico anterior se existir
-  if (chartCategorias) {
-    chartCategorias.destroy();
-  }
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
+  });
   
-  // Cria novo gráfico
-  chartCategorias = new Chart(canvas, {
-    type: 'doughnut',
-    data: {
-      labels: labels,
-      datasets: [{
-        data: data,
-        backgroundColor: cores.slice(0, labels.length),
-        borderWidth: 2,
-        borderColor: '#1e242d'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: {
-            color: '#e2e8f0',
-            font: { family: 'Barlow', size: 12 }
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: (context) => {
-              const label = context.label || '';
-              const value = context.raw || 0;
-              const total = context.dataset.data.reduce((a, b) => a + b, 0);
-              const percent = ((value / total) * 100).toFixed(1);
-              return `${label}: ${value} itens (${percent}%)`;
-            }
-          }
-        }
-      }
+  document.getElementById('btn-salvar-produto')?.addEventListener('click', () => {
+    import('./produtos.js').then(m => {
+      m.salvarProduto({
+        codigo: document.getElementById('prod-codigo').value,
+        nome: document.getElementById('prod-nome').value,
+        categoria: document.getElementById('prod-cat').value,
+        desc: document.getElementById('prod-desc').value,
+        qty: document.getElementById('prod-qty').value,
+        min: document.getElementById('prod-min').value,
+        custo: document.getElementById('prod-custo').value,
+        venda: document.getElementById('prod-venda').value,
+        localizacao: document.getElementById('prod-loc').value,
+        marca: document.getElementById('prod-marca').value
+      });
+    });
+  });
+  
+  document.getElementById('search-estoque')?.addEventListener('input', renderEstoque);
+  document.getElementById('filter-cat')?.addEventListener('change', renderEstoque);
+  document.getElementById('filter-status')?.addEventListener('change', renderEstoque);
+  document.getElementById('filter-ordem')?.addEventListener('change', renderEstoque);
+  document.getElementById('btn-limpar-filtros')?.addEventListener('click', () => {
+    document.getElementById('search-estoque').value = '';
+    document.getElementById('filter-cat').value = '';
+    document.getElementById('filter-status').value = '';
+    document.getElementById('filter-ordem').value = 'nome-asc';
+    renderEstoque();
+  });
+  
+  document.querySelectorAll('[data-mov-filter]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      document.querySelectorAll('[data-mov-filter]').forEach(b => b.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      setFiltroMovimentos(e.currentTarget.dataset.movFilter);
+    });
+  });
+  
+  document.getElementById('btn-confirmar-entrada')?.addEventListener('click', () => {
+    if (registrarEntrada(
+      parseInt(document.getElementById('ent-peca').value),
+      parseInt(document.getElementById('ent-qty').value),
+      document.getElementById('ent-resp').value,
+      document.getElementById('ent-obs').value
+    )) limparFormEntrada();
+  });
+  
+  document.getElementById('btn-limpar-entrada')?.addEventListener('click', limparFormEntrada);
+  
+  document.getElementById('btn-add-item')?.addEventListener('click', () => {
+    if (adicionarItemSaida(
+      parseInt(document.getElementById('out-peca').value),
+      parseInt(document.getElementById('out-qty').value)
+    )) {
+      document.getElementById('out-peca').value = '';
+      document.getElementById('out-qty').value = 1;
+      renderSaidaItems();
     }
   });
-}
+  
+  document.getElementById('out-desc')?.addEventListener('input', atualizarTotaisSaida);
+  
+  document.getElementById('btn-finalizar-saida')?.addEventListener('click', () => {
+    const cliente = document.getElementById('out-cliente').value;
+    const doc = document.getElementById('out-doc').value;
+    const pagamento = document.getElementById('out-pag').value;
+    const desconto = parseFloat(document.getElementById('out-desc').value) || 0;
+    
+    if (doc && doc.trim() !== '') {
+      const numerosDoc = doc.replace(/\D/g, '');
+      if (numerosDoc.length === 11 && !validarCPF(doc)) {
+        mostrarToast('CPF inválido!', 'error');
+        return;
+      }
+      if (numerosDoc.length === 14 && !validarCNPJ(doc)) {
+        mostrarToast('CNPJ inválido!', 'error');
+        return;
+      }
+    }
+    
+    const nota = finalizarSaida({ cliente, doc, pagamento, desconto });
+    if (nota) {
+      document.getElementById('out-cliente').value = '';
+      document.getElementById('out-doc').value = '';
+      document.getElementById('out-desc').value = 0;
+      renderSaidaItems();
+      document.getElementById('nf-content').innerHTML = gerarHTMLNota(nota);
+      abrirModal('modal-nf');
+    }
+  });
+  
+  document.getElementById('btn-cancelar-saida')?.addEventListener('click', () => {
+    cancelarSaida();
+    document.getElementById('out-cliente').value = '';
+    document.getElementById('out-doc').value = '';
+    document.getElementById('out-desc').value = 0;
+    renderSaidaItems();
+  });
+  
+  document.getElementById('btn-imprimir-nf')?.addEventListener('click', () => {
+    const content = document.getElementById('nf-printable');
+    if (content) imprimirNota(content.outerHTML);
+  });
+  
+  document.getElementById('btn-confirmar-acao')?.addEventListener('click', () => {
+    if (confirmCallback) { confirmCallback(); confirmCallback = null; }
+    fecharModal('modal-confirmacao');
+  });
 }
