@@ -3,7 +3,7 @@
 import { produtos, getCategorias, editarProduto, excluirProduto, limparFormProduto, editProdId } from './produtos.js';
 import { movimentos, getMovimentosFiltrados, getSaidaItems, adicionarItemSaida, removerItemSaida, calcularTotaisSaida, finalizarSaida, cancelarSaida, registrarEntrada, limparFormEntrada } from './movimentos.js';
 import { notas, getNota, gerarHTMLNota, imprimirNota, getTodasNotas } from './notas.js';
-import { formatarMoeda, formatarData, mostrarToast, abrirModal, fecharModal } from './utils.js';
+import { formatarMoeda, formatarData, mostrarToast, abrirModal, fecharModal, validarCPF, validarCNPJ, validarDocumento } from './utils.js';
 
 // Estado da UI
 let paginaAtual = 'dashboard';
@@ -485,40 +485,47 @@ camposMoeda.forEach(campo => {
   document.getElementById('out-desc')?.addEventListener('input', atualizarTotaisSaida);
   
   // Saída - finalizar
-  document.getElementById('btn-finalizar-saida')?.addEventListener('click', () => {
-    const cliente = document.getElementById('out-cliente').value;
-    const doc = document.getElementById('out-doc').value;
-    const pagamento = document.getElementById('out-pag').value;
-    const desconto = parseFloat(document.getElementById('out-desc').value) || 0;
-    
-    const nota = finalizarSaida({ cliente, doc, pagamento, desconto });
-    if (nota) {
-      // Limpa formulário
-      document.getElementById('out-cliente').value = '';
-      document.getElementById('out-doc').value = '';
-      document.getElementById('out-desc').value = 0;
-      renderSaidaItems();
-      
-      // Mostra a NF
-      document.getElementById('nf-content').innerHTML = gerarHTMLNota(nota);
-      abrirModal('modal-nf');
-    }
-  });
+document.getElementById('btn-finalizar-saida')?.addEventListener('click', () => {
+  const cliente = document.getElementById('out-cliente').value;
+  const doc = document.getElementById('out-doc').value;
+  const pagamento = document.getElementById('out-pag').value;
+  const desconto = parseFloat(document.getElementById('out-desc').value) || 0;
   
-  // Saída - cancelar
-  document.getElementById('btn-cancelar-saida')?.addEventListener('click', () => {
-    cancelarSaida();
+  // ===== VALIDAÇÃO DE CPF/CNPJ =====
+  if (doc && doc.trim() !== '') {
+    // Remove a máscara para validar apenas os números
+    const numerosDoc = doc.replace(/\D/g, '');
+    
+    // Verifica se é CPF (11 dígitos) ou CNPJ (14 dígitos)
+    if (numerosDoc.length === 11) {
+      if (!validarCPF(doc)) {
+        mostrarToast('CPF inválido! Verifique o número.', 'error');
+        return; // Para a execução aqui
+      }
+    } else if (numerosDoc.length === 14) {
+      if (!validarCNPJ(doc)) {
+        mostrarToast('CNPJ inválido! Verifique o número.', 'error');
+        return; // Para a execução aqui
+      }
+    } else if (numerosDoc.length > 0) {
+      // Se tem números mas não tem 11 nem 14 dígitos
+      mostrarToast('Documento incompleto! Informe CPF (11 dígitos) ou CNPJ (14 dígitos).', 'error');
+      return;
+    }
+  }
+  // ===== FIM DA VALIDAÇÃO =====
+  
+  const nota = finalizarSaida({ cliente, doc, pagamento, desconto });
+  if (nota) {
+    // Limpa formulário
     document.getElementById('out-cliente').value = '';
     document.getElementById('out-doc').value = '';
     document.getElementById('out-desc').value = 0;
     renderSaidaItems();
-  });
-  
-  // Imprimir NF
-  document.getElementById('btn-imprimir-nf')?.addEventListener('click', () => {
-    const content = document.getElementById('nf-printable');
-    if (content) {
-      imprimirNota(content.outerHTML);
-    }
-  });
+    
+    // Mostra a NF
+    document.getElementById('nf-content').innerHTML = gerarHTMLNota(nota);
+    abrirModal('modal-nf');
+  }
+});
 }
