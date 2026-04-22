@@ -396,6 +396,49 @@ export function inicializarEventos() {
     import('./produtos.js').then(module => {
       module.salvarProduto(dados);
     });
+
+		// Máscaras de input
+const campoCPF = document.getElementById('out-doc');
+const campoCNPJ = document.getElementById('out-doc');
+const camposMoeda = document.querySelectorAll('#prod-custo, #prod-venda, #out-desc');
+
+// Detecta se é CPF ou CNPJ pelo tamanho
+if (campoCPF) {
+  campoCPF.addEventListener('input', (e) => {
+    let valor = e.target.value;
+    const numeros = limparMascara(valor);
+    
+    if (numeros.length <= 11) {
+      e.target.value = mascaraCPF(valor);
+      e.target.setAttribute('data-tipo', 'cpf');
+    } else {
+      e.target.value = mascaraCNPJ(valor);
+      e.target.setAttribute('data-tipo', 'cnpj');
+    }
+  });
+}
+
+// Máscara para campos de moeda
+camposMoeda.forEach(campo => {
+  if (campo) {
+    campo.addEventListener('input', (e) => {
+      let valor = e.target.value;
+      valor = valor.replace(/\D/g, '');
+      if (valor) {
+        e.target.value = mascaraMoeda(valor);
+      }
+    });
+    
+    // Formata ao perder o foco
+    campo.addEventListener('blur', (e) => {
+      let valor = e.target.value;
+      const numeros = parseFloat(limparMascara(valor)) / 100;
+      if (!isNaN(numeros)) {
+        e.target.value = formatarParaMoeda(numeros);
+      }
+    });
+  }
+});
   });
   
   // Busca no estoque

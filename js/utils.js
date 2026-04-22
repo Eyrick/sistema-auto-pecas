@@ -74,3 +74,79 @@ export function abrirModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) modal.classList.add('open');
 }
+
+// ===== MÁSCARAS DE INPUT =====
+
+/**
+ * Aplica máscara de CPF (000.000.000-00)
+ */
+export function mascaraCPF(valor) {
+  valor = valor.replace(/\D/g, '');
+  valor = valor.replace(/(\d{3})(\d)/, '$1.$2');
+  valor = valor.replace(/(\d{3})(\d)/, '$1.$2');
+  valor = valor.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  return valor;
+}
+
+/**
+ * Aplica máscara de CNPJ (00.000.000/0000-00)
+ */
+export function mascaraCNPJ(valor) {
+  valor = valor.replace(/\D/g, '');
+  valor = valor.replace(/^(\d{2})(\d)/, '$1.$2');
+  valor = valor.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+  valor = valor.replace(/\.(\d{3})(\d)/, '.$1/$2');
+  valor = valor.replace(/(\d{4})(\d)/, '$1-$2');
+  return valor;
+}
+
+/**
+ * Aplica máscara de moeda (R$ 0,00)
+ */
+export function mascaraMoeda(valor) {
+  valor = valor.replace(/\D/g, '');
+  valor = (parseInt(valor) / 100).toFixed(2);
+  valor = valor.replace('.', ',');
+  valor = valor.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+  return 'R$ ' + valor;
+}
+
+/**
+ * Aplica máscara de telefone ((00) 00000-0000)
+ */
+export function mascaraTelefone(valor) {
+  valor = valor.replace(/\D/g, '');
+  valor = valor.replace(/^(\d{2})(\d)/g, '($1) $2');
+  valor = valor.replace(/(\d)(\d{4})$/, '$1-$2');
+  return valor;
+}
+
+/**
+ * Aplica máscara de acordo com o tipo
+ */
+export function aplicarMascara(valor, tipo) {
+  switch (tipo) {
+    case 'cpf': return mascaraCPF(valor);
+    case 'cnpj': return mascaraCNPJ(valor);
+    case 'moeda': return mascaraMoeda(valor);
+    case 'telefone': return mascaraTelefone(valor);
+    default: return valor;
+  }
+}
+
+/**
+ * Desfaz máscara (retorna apenas números)
+ */
+export function limparMascara(valor) {
+  return valor.replace(/\D/g, '');
+}
+
+/**
+ * Formata um número para exibição como moeda
+ */
+export function formatarParaMoeda(valor) {
+  return 'R$ ' + (valor || 0).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
