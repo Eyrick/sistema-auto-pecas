@@ -568,3 +568,17 @@ textarea { resize: vertical; min-height: 80px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .panels { grid-template-columns: 1fr; }
 }
+
+/* Animação para badge de alerta */
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; background: var(--red); color: white; }
+  100% { opacity: 1; }
+}
+
+.badge.alert-active {
+  animation: pulse 2s infinite;
+  background: var(--red) !important;
+  color: white !important;
+  border-color: var(--red) !important;
+}

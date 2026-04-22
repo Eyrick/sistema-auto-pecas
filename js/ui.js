@@ -536,4 +536,59 @@ export function inicializarEventos() {
     }
     fecharModal('modal-confirmacao');
   });
+	// ===== NOTIFICAÇÕES DE ESTOQUE BAIXO =====
+
+let notificacaoAtiva = false;
+let intervaloNotificacao = null;
+
+/**
+ * Verifica itens com estoque baixo e exibe notificação
+ */
+export function verificarEstoqueBaixo() {
+  const criticos = produtos.filter(p => p.qty <= p.min);
+  
+  const badge = document.getElementById('alert-badge');
+  if (!badge) return;
+  
+  if (criticos.length > 0) {
+    badge.textContent = `⚠️ ${criticos.length} ALERTA${criticos.length !== 1 ? 'S' : ''}`;
+    badge.classList.add('alert-active');
+    
+    if (!notificacaoAtiva) {
+      notificacaoAtiva = true;
+      const nomesCriticos = criticos.slice(0, 3).map(p => p.nome).join(', ');
+      const mensagem = criticos.length > 3 
+        ? `${nomesCriticos} e mais ${criticos.length - 3} itens...`
+        : `${nomesCriticos}`;
+      mostrarToast(`⚠️ Estoque baixo: ${mensagem}`, 'error');
+    }
+  } else {
+    badge.textContent = `● 0 ALERTAS`;
+    badge.classList.remove('alert-active');
+    notificacaoAtiva = false;
+  }
+}
+
+/**
+ * Inicia verificação periódica de estoque baixo
+ */
+export function iniciarMonitoramentoEstoque() {
+  // Verifica a cada 30 segundos
+  intervaloNotificacao = setInterval(() => {
+    verificarEstoqueBaixo();
+  }, 30000);
+  
+  // Primeira verificação após 2 segundos
+  setTimeout(verificarEstoqueBaixo, 2000);
+}
+
+/**
+ * Para o monitoramento
+ */
+export function pararMonitoramentoEstoque() {
+  if (intervaloNotificacao) {
+    clearInterval(intervaloNotificacao);
+    intervaloNotificacao = null;
+  }
+}
 }
