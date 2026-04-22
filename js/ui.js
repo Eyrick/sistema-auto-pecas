@@ -106,32 +106,77 @@ export function renderDashboard() {
 
 // ===== ESTOQUE =====
 
+// Estado dos filtros avançados
+let filtrosAvancados = {
+  status: '',
+  precoMin: null,
+  precoMax: null,
+  ordem: 'nome-asc'
+};
+
 export function renderEstoque() {
   const search = document.getElementById('search-estoque')?.value.toLowerCase() || '';
   const cat = document.getElementById('filter-cat')?.value || '';
   
+  // Lê filtros avançados
+  const status = document.getElementById('filter-status')?.value || '';
+  const precoMinInput = document.getElementById('filter-preco-min')?.value || '';
+  const precoMaxInput = document.getElementById('filter-preco-max')?.value || '';
+  const ordem = document.getElementById('filter-ordem')?.value || 'nome-asc';
+  
+  const precoMin = precoMinInput ? parseFloat(precoMinInput.replace(/\D/g, '')) / 100 : null;
+  const precoMax = precoMaxInput ? parseFloat(precoMaxInput.replace(/\D/g, '')) / 100 : null;
+  
   let lista = produtos.filter(p => {
+    // Filtro de busca
     const matchSearch = !search || 
       p.nome.toLowerCase().includes(search) || 
       p.codigo.toLowerCase().includes(search) ||
       (p.categoria || '').toLowerCase().includes(search);
+    
+    // Filtro de categoria
     const matchCat = !cat || p.categoria === cat;
-    return matchSearch && matchCat;
+    
+    // Filtro de status
+    let matchStatus = true;
+    if (status === 'ok') matchStatus = p.qty > p.min;
+    else if (status === 'baixo') matchStatus = p.qty <= p.min && p.qty > 0;
+    else if (status === 'zerado') matchStatus = p.qty === 0;
+    
+    // Filtro de preço
+    let matchPreco = true;
+    if (precoMin !== null) matchPreco = matchPreco && p.venda >= precoMin;
+    if (precoMax !== null) matchPreco = matchPreco && p.venda <= precoMax;
+    
+    return matchSearch && matchCat && matchStatus && matchPreco;
   });
+  
+  // Ordenação
+  switch (ordem) {
+    case 'nome-asc': lista.sort((a, b) => a.nome.localeCompare(b.nome)); break;
+    case 'nome-desc': lista.sort((a, b) => b.nome.localeCompare(a.nome)); break;
+    case 'preco-asc': lista.sort((a, b) => a.venda - b.venda); break;
+    case 'preco-desc': lista.sort((a, b) => b.venda - a.venda); break;
+    case 'qty-asc': lista.sort((a, b) => a.qty - b.qty); break;
+    case 'qty-desc': lista.sort((a, b) => b.qty - a.qty); break;
+  }
   
   // Popula filtro de categorias
   const filterCat = document.getElementById('filter-cat');
   if (filterCat) {
     const cats = getCategorias();
+    const currentVal = filterCat.value;
     filterCat.innerHTML = '<option value="">Todas categorias</option>' + 
-      cats.map(c => `<option ${c === cat ? 'selected' : ''}>${c}</option>`).join('');
+      cats.map(c => `<option ${c === currentVal ? 'selected' : ''}>${c}</option>`).join('');
   }
   
-  document.getElementById('count-estoque').textContent = lista.length + ' itens';
+  // Atualiza contador
+  document.getElementById('count-estoque').textContent = `${lista.length} itens encontrados`;
   
+  // Renderiza tabela
   const tbody = document.getElementById('tbody-estoque');
   if (lista.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text3)">Nenhuma peça encontrada.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text3)">Nenhuma peça encontrada com os filtros aplicados.</td></tr>`;
     return;
   }
   
@@ -163,7 +208,7 @@ export function renderEstoque() {
     `;
   }).join('');
   
-  // Adiciona event listeners aos botões
+  // Reaplica event listeners
   document.querySelectorAll('.btn-editar-produto').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = parseInt(btn.dataset.id);
@@ -188,9 +233,22 @@ export function renderEstoque() {
   document.querySelectorAll('.btn-excluir-produto').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = parseInt(btn.dataset.id);
-      excluirProduto(id);
+      solicitarExclusaoProduto(id);
     });
   });
+}
+
+/**
+ * Limpa todos os filtros avançados
+ */
+function limparFiltrosAvancados() {
+  document.getElementById('search-estoque').value = '';
+  document.getElementById('filter-cat').value = '';
+  document.getElementById('filter-status').value = '';
+  document.getElementById('filter-preco-min').value = '';
+  document.getElementById('filter-preco-max').value = '';
+  document.getElementById('filter-ordem').value = 'nome-asc';
+  renderEstoque();
 }
 
 // ===== MOVIMENTOS =====
@@ -413,6 +471,13 @@ export function inicializarEventos() {
       setFiltroMovimentos(filtro);
     });
   });
+
+	// Filtros avançados do estoque
+document.getElementById('filter-status')?.addEventListener('change', renderEstoque);
+document.getElementById('filter-preco-min')?.addEventListener('input', renderEstoque);
+document.getElementById('filter-preco-max')?.addEventListener('input', renderEstoque);
+document.getElementById('filter-ordem')?.addEventListener('change', renderEstoque);
+document.getElementById('btn-limpar-filtros')?.addEventListener('click', limparFiltrosAvancados);
   
   // Entrada
   document.getElementById('btn-confirmar-entrada')?.addEventListener('click', () => {
