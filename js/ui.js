@@ -396,49 +396,6 @@ export function inicializarEventos() {
     import('./produtos.js').then(module => {
       module.salvarProduto(dados);
     });
-
-		// Máscaras de input
-const campoCPF = document.getElementById('out-doc');
-const campoCNPJ = document.getElementById('out-doc');
-const camposMoeda = document.querySelectorAll('#prod-custo, #prod-venda, #out-desc');
-
-// Detecta se é CPF ou CNPJ pelo tamanho
-if (campoCPF) {
-  campoCPF.addEventListener('input', (e) => {
-    let valor = e.target.value;
-    const numeros = limparMascara(valor);
-    
-    if (numeros.length <= 11) {
-      e.target.value = mascaraCPF(valor);
-      e.target.setAttribute('data-tipo', 'cpf');
-    } else {
-      e.target.value = mascaraCNPJ(valor);
-      e.target.setAttribute('data-tipo', 'cnpj');
-    }
-  });
-}
-
-// Máscara para campos de moeda
-camposMoeda.forEach(campo => {
-  if (campo) {
-    campo.addEventListener('input', (e) => {
-      let valor = e.target.value;
-      valor = valor.replace(/\D/g, '');
-      if (valor) {
-        e.target.value = mascaraMoeda(valor);
-      }
-    });
-    
-    // Formata ao perder o foco
-    campo.addEventListener('blur', (e) => {
-      let valor = e.target.value;
-      const numeros = parseFloat(limparMascara(valor)) / 100;
-      if (!isNaN(numeros)) {
-        e.target.value = formatarParaMoeda(numeros);
-      }
-    });
-  }
-});
   });
   
   // Busca no estoque
@@ -484,48 +441,99 @@ camposMoeda.forEach(campo => {
   // Saída - atualizar total ao mudar desconto
   document.getElementById('out-desc')?.addEventListener('input', atualizarTotaisSaida);
   
+  // =========================================================================
+  // ⬇️⬇️⬇️ AQUI É O LOCAL EXATO ONDE VOCÊ VAI ADICIONAR A VALIDAÇÃO ⬇️⬇️⬇️
+  // =========================================================================
+  
   // Saída - finalizar
-document.getElementById('btn-finalizar-saida')?.addEventListener('click', () => {
-  const cliente = document.getElementById('out-cliente').value;
-  const doc = document.getElementById('out-doc').value;
-  const pagamento = document.getElementById('out-pag').value;
-  const desconto = parseFloat(document.getElementById('out-desc').value) || 0;
-  
-  // ===== VALIDAÇÃO DE CPF/CNPJ =====
-  if (doc && doc.trim() !== '') {
-    // Remove a máscara para validar apenas os números
-    const numerosDoc = doc.replace(/\D/g, '');
+  document.getElementById('btn-finalizar-saida')?.addEventListener('click', () => {
+    const cliente = document.getElementById('out-cliente').value;
+    const doc = document.getElementById('out-doc').value;
+    const pagamento = document.getElementById('out-pag').value;
+    const desconto = parseFloat(document.getElementById('out-desc').value) || 0;
     
-    // Verifica se é CPF (11 dígitos) ou CNPJ (14 dígitos)
-    if (numerosDoc.length === 11) {
-      if (!validarCPF(doc)) {
-        mostrarToast('CPF inválido! Verifique o número.', 'error');
-        return; // Para a execução aqui
-      }
-    } else if (numerosDoc.length === 14) {
-      if (!validarCNPJ(doc)) {
-        mostrarToast('CNPJ inválido! Verifique o número.', 'error');
-        return; // Para a execução aqui
-      }
-    } else if (numerosDoc.length > 0) {
-      // Se tem números mas não tem 11 nem 14 dígitos
-      mostrarToast('Documento incompleto! Informe CPF (11 dígitos) ou CNPJ (14 dígitos).', 'error');
-      return;
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    // ✅ VALIDAÇÃO DE CPF/CNPJ - ADICIONE ESTE BLOCO INTEIRO AQUI DENTRO
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    if (doc && doc.trim() !== '') {
+      // Importa dinamicamente as funções de validação
+      import('./utils.js').then(({ validarCPF, validarCNPJ }) => {
+        // Remove a máscara para validar apenas os números
+        const numerosDoc = doc.replace(/\D/g, '');
+        
+        // Verifica se é CPF (11 dígitos) ou CNPJ (14 dígitos)
+        if (numerosDoc.length === 11) {
+          if (!validarCPF(doc)) {
+            mostrarToast('CPF inválido! Verifique o número.', 'error');
+            return; // Para a execução aqui
+          }
+        } else if (numerosDoc.length === 14) {
+          if (!validarCNPJ(doc)) {
+            mostrarToast('CNPJ inválido! Verifique o número.', 'error');
+            return; // Para a execução aqui
+          }
+        } else if (numerosDoc.length > 0) {
+          // Se tem números mas não tem 11 nem 14 dígitos
+          mostrarToast('Documento incompleto! Informe CPF (11 dígitos) ou CNPJ (14 dígitos).', 'error');
+          return;
+        }
+        
+        // Se passou na validação, continua com a finalização
+        finalizarVenda();
+      });
+    } else {
+      // Se não tem documento, finaliza direto
+      finalizarVenda();
     }
-  }
-  // ===== FIM DA VALIDAÇÃO =====
+    
+    // Função interna para finalizar a venda
+    function finalizarVenda() {
+      const nota = finalizarSaida({ cliente, doc, pagamento, desconto });
+      if (nota) {
+        // Limpa formulário
+        document.getElementById('out-cliente').value = '';
+        document.getElementById('out-doc').value = '';
+        document.getElementById('out-desc').value = 0;
+        renderSaidaItems();
+        
+        // Mostra a NF
+        document.getElementById('nf-content').innerHTML = gerarHTMLNota(nota);
+        abrirModal('modal-nf');
+      }
+    }
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    // ✅ FIM DA VALIDAÇÃO DE CPF/CNPJ
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    
+  });
   
-  const nota = finalizarSaida({ cliente, doc, pagamento, desconto });
-  if (nota) {
-    // Limpa formulário
+  // =========================================================================
+  // ⬆️⬆️⬆️ FIM DO LOCAL ONDE VOCÊ ADICIONA A VALIDAÇÃO ⬆️⬆️⬆️
+  // =========================================================================
+  
+  // Saída - cancelar
+  document.getElementById('btn-cancelar-saida')?.addEventListener('click', () => {
+    cancelarSaida();
     document.getElementById('out-cliente').value = '';
     document.getElementById('out-doc').value = '';
     document.getElementById('out-desc').value = 0;
     renderSaidaItems();
-    
-    // Mostra a NF
-    document.getElementById('nf-content').innerHTML = gerarHTMLNota(nota);
-    abrirModal('modal-nf');
-  }
-});
+  });
+  
+  // Imprimir NF
+  document.getElementById('btn-imprimir-nf')?.addEventListener('click', () => {
+    const content = document.getElementById('nf-printable');
+    if (content) {
+      imprimirNota(content.outerHTML);
+    }
+  });
+  
+  // Confirmação personalizada
+  document.getElementById('btn-confirmar-acao')?.addEventListener('click', () => {
+    if (confirmCallback) {
+      confirmCallback();
+      confirmCallback = null;
+    }
+    fecharModal('modal-confirmacao');
+  });
 }

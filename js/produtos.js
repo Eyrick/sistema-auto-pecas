@@ -3,6 +3,7 @@
 import { Storage } from './storage.js';
 import { gerarId, mostrarToast, fecharModal } from './utils.js';
 import { atualizarUI, populateSelects, renderEstoque, renderDashboard } from './ui.js';
+import { confirmarAcao } from './ui.js';
 
 // Estado global dos produtos
 export let produtos = Storage.getProdutos();
@@ -85,20 +86,21 @@ export function editarProduto(id) {
  * @param {number} id - ID do produto
  * @returns {boolean} Sucesso da operação
  */
-export function excluirProduto(id) {
+
+export function solicitarExclusaoProduto(id) {
   const produto = produtos.find(p => p.id === id);
-  if (!produto) return false;
+  if (!produto) return;
   
-  if (!confirm(`Excluir permanentemente "${produto.nome}"?`)) {
-    return false;
-  }
-  
-  produtos = produtos.filter(p => p.id !== id);
-  Storage.setProdutos(produtos);
-  atualizarUI();
-  mostrarToast('🗑️ Peça removida do estoque');
-  
-  return true;
+  confirmarAcao(
+    '🗑️ Excluir Peça',
+    `Tem certeza que deseja excluir permanentemente "${produto.nome}"?`,
+    () => {
+      produtos = produtos.filter(p => p.id !== id);
+      Storage.setProdutos(produtos);
+      atualizarUI();
+      mostrarToast('✅ Peça removida com sucesso!');
+    }
+  );
 }
 
 /**
