@@ -100,6 +100,8 @@ export function renderDashboard() {
       </div>
     `).join('');
   }
+	 // Renderiza o gráfico
+  renderGraficoCategorias();
 }
 
 // ===== ESTOQUE =====
@@ -590,5 +592,74 @@ export function pararMonitoramentoEstoque() {
     clearInterval(intervaloNotificacao);
     intervaloNotificacao = null;
   }
+}
+// ===== GRÁFICO DO DASHBOARD =====
+
+let chartCategorias = null;
+
+/**
+ * Cria/atualiza o gráfico de distribuição por categoria
+ */
+export function renderGraficoCategorias() {
+  const canvas = document.getElementById('chart-categorias');
+  if (!canvas) return;
+  
+  // Agrupa produtos por categoria
+  const categorias = {};
+  produtos.forEach(p => {
+    categorias[p.categoria] = (categorias[p.categoria] || 0) + 1;
+  });
+  
+  const labels = Object.keys(categorias);
+  const data = Object.values(categorias);
+  
+  // Cores para o gráfico
+  const cores = [
+    '#f97316', '#22c55e', '#3b82f6', '#ef4444', '#eab308',
+    '#8b5cf6', '#ec4899', '#06b6d4', '#f59e0b', '#10b981'
+  ];
+  
+  // Destroi gráfico anterior se existir
+  if (chartCategorias) {
+    chartCategorias.destroy();
+  }
+  
+  // Cria novo gráfico
+  chartCategorias = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: cores.slice(0, labels.length),
+        borderWidth: 2,
+        borderColor: '#1e242d'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            color: '#e2e8f0',
+            font: { family: 'Barlow', size: 12 }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const label = context.label || '';
+              const value = context.raw || 0;
+              const total = context.dataset.data.reduce((a, b) => a + b, 0);
+              const percent = ((value / total) * 100).toFixed(1);
+              return `${label}: ${value} itens (${percent}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
 }
 }
