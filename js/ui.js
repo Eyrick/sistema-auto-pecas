@@ -156,6 +156,7 @@ export function mostrarPagina(nome) {
     saida: 'Saída / Venda',
     notas: 'Notas Fiscais',
     orcamentos: 'Orçamentos',
+    relatorios: 'Relatórios',
   };
   document.getElementById('page-title').textContent = titulos[nome] || nome;
   
@@ -172,6 +173,7 @@ function renderizarPaginaAtual() {
     case 'saida': populateSelects(); renderSaidaItems(); break;
     case 'notas': renderNotas(); break;
     case 'orcamentos': renderOrcamentos(); break;
+    case 'relatorios': renderRelatorios(); break;
   }
 }
 
@@ -808,6 +810,15 @@ document.getElementById('btn-salvar-orcamento')?.addEventListener('click', () =>
   });
 });
 
+// Período dos relatórios
+document.querySelectorAll('.periodo-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    document.querySelectorAll('.periodo-btn').forEach(b => b.classList.remove('active'));
+    e.currentTarget.classList.add('active');
+    periodoSelecionado = e.currentTarget.dataset.periodo;
+    renderRelatorios();
+  });
+});
 }
 
 // ===== EXPORTAÇÃO PARA CSV =====
@@ -1001,4 +1012,127 @@ export function renderOrcamentoItems() {
     
     document.getElementById('orc-total').textContent = 'R$ ' + formatarMoeda(m.calcularTotalOrcamento());
   });
+}
+
+// ===== RELATÓRIOS =====
+
+let periodoSelecionado = 'todos';
+let chartVendas = null;
+
+export function renderRelatorios() {
+  const agora = new Date();
+  let dataInicio;
+  
+  switch (periodoSelecionado) {
+    case 'hoje':
+      dataInicio = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+      break;
+    case 'semana':
+      dataInicio = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case 'mes':
+      dataInicio = new Date(agora.getTime() - 30 * 24 * 60 * 60 * 1000);
+      break;
+    default:
+      dataInicio = new Date(0); // todos
+  }
+  
+  const vendasFiltradas = notas.filter(n => new Date(n.data) >= dataInicio);
+  
+  // Cards
+  const faturamentoTotal = vendasFiltradas.reduce((s, n) => s + n.total, 0);
+  document.getElementById('rel-fat-total').textContent = 'R$ ' + formatarMoeda(faturamentoTotal);
+  document.getElementById('rel-total-vendas').textContent = vendasFiltradas.length;
+  
+  // Produto mais vendido
+  const contagem = {};
+  vendasFiltradas.forEach(n => {
+    n.itens.forEach(i => {
+      contagem[i.nome] = (contagem[i.nome] || 0) + i.qty;
+    });
+  });
+  
+  const topNome = Object.entries(contagem).sort((a, b) => b[1] - a[1])[0];
+  if (topNome) {
+    document.getElementById('rel-top-produto').textContent = topNome[0];
+    document.getElementById('rel-top-qtd').textContent = topNome[1] + ' un. vendidas';
+  }
+  
+  // Média diária
+  const dias = Math.max(1, Math.ceil((agora - dataInicio) / (24 * 60 * 60 * 1000)));
+  const mediaDiaria = faturamentoTotal / dias;
+  document.getElementById('rel-media-diaria').textContent = 'R$ ' + formatarMoeda(mediaDiaria);
+  
+  // Gráfico
+  renderGraficoVendas(vendasFiltradas);
+  
+  // Top 5 produtos
+  renderTopProdutos(contagem);
+}
+
+function renderGraficoVendas(vendas) {
+  const canvas = document.getElementById('chart-vendas');
+  if (!canvas || typeof Chart === 'undefined') return;
+  
+  // Agrupa por data
+  const porData = {};
+  vendas.forEach(v => {
+    const data = new Date(v.data).toLocaleDateString('pt-BR');
+    porData[data] = (porData[data] || 0) + v.total;
+  });
+  
+  const labels = Object.keys(porData);
+  const data = Object.values(porData);
+  
+  if (chartVendas) chartVendas.destroy();
+  
+  chartVendas = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Vendas (R$)',
+        data: data,
+        backgroundColor: '#f97316',
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: {
+          ticks: { color: '#94a3b8' },
+          grid: { color: '#2a3340' }
+        },
+        x: {
+          ticks: { color: '#94a3b8', maxRotation: 45 },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
+function renderTopProdutos(contagem) {
+  const top5 = Object.entries(contagem).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const el = document.getElementById('lista-top-produtos');
+  
+  if (top5.length === 0) {
+    el.innerHTML = '<p style="color:var(--text3);text-align:center;padding:20px">Nenhuma venda no período.</p>';
+    return;
+  }
+  
+  el.innerHTML = top5.map(([nome, qtd], i) => `
+    <div class="mov-item">
+      <div style="font-family:var(--font-display);font-size:24px;font-weight:900;color:var(--accent);width:40px">#${i + 1}</div>
+      <div class="mov-info">
+        <div class="mov-name">${nome}</div>
+        <div class="mov-meta">${qtd} unidades vendidas</div>
+      </div>
+      <div style="width:${Math.min(100, qty * 5)}px;height:8px;background:var(--accent);border-radius:4px"></div>
+    </div>
+  `).join('');
 }
