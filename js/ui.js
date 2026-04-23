@@ -42,10 +42,89 @@ import {
   limparMascara
 } from './utils.js';
 
-import { 
-  Paginacao, 
-  gerarHTMLPaginacao 
-} from './utils.js';
+// ===== PAGINAÇÃO =====
+
+class Paginacao {
+  constructor(itensPorPagina = 10) {
+    this.itensPorPagina = itensPorPagina;
+    this.paginaAtual = 1;
+    this.totalItens = 0;
+  }
+
+  get totalPaginas() {
+    return Math.ceil(this.totalItens / this.itensPorPagina) || 1;
+  }
+
+  get offset() {
+    return (this.paginaAtual - 1) * this.itensPorPagina;
+  }
+
+  get limit() {
+    return this.itensPorPagina;
+  }
+
+  get temProxima() {
+    return this.paginaAtual < this.totalPaginas;
+  }
+
+  get temAnterior() {
+    return this.paginaAtual > 1;
+  }
+
+  proximaPagina() {
+    if (this.temProxima) this.paginaAtual++;
+  }
+
+  paginaAnterior() {
+    if (this.temAnterior) this.paginaAtual--;
+  }
+
+  irParaPagina(numero) {
+    if (numero >= 1 && numero <= this.totalPaginas) {
+      this.paginaAtual = numero;
+    }
+  }
+
+  resetar() {
+    this.paginaAtual = 1;
+  }
+
+  paginar(lista) {
+    this.totalItens = lista.length;
+    return lista.slice(this.offset, this.offset + this.limit);
+  }
+
+  getInfo() {
+    const inicio = this.offset + 1;
+    const fim = Math.min(this.offset + this.limit, this.totalItens);
+    return `${inicio}-${fim} de ${this.totalItens}`;
+  }
+}
+
+function gerarHTMLPaginacao(paginacao) {
+  const p = paginacao;
+  
+  return `
+    <div class="paginacao">
+      <div class="paginacao-info">
+        Mostrando ${p.getInfo()} itens
+      </div>
+      <div class="paginacao-controles">
+        <button class="btn btn-ghost btn-sm ${!p.temAnterior ? 'btn-disabled' : ''}" 
+                ${!p.temAnterior ? 'disabled' : ''} 
+                data-pagina="anterior">
+          ◀ Anterior
+        </button>
+        <span class="paginacao-paginas">Página ${p.paginaAtual} de ${p.totalPaginas}</span>
+        <button class="btn btn-ghost btn-sm ${!p.temProxima ? 'btn-disabled' : ''}" 
+                ${!p.temProxima ? 'disabled' : ''} 
+                data-pagina="proxima">
+          Próxima ▶
+        </button>
+      </div>
+    </div>
+  `;
+}
 
 // ===== ESTADO DA UI =====
 let paginaAtual = 'dashboard';
@@ -213,7 +292,8 @@ export function renderEstoque() {
     case 'qty-asc': lista.sort((a, b) => a.qty - b.qty); break;
     case 'qty-desc': lista.sort((a, b) => b.qty - a.qty); break;
   }
-  
+  const countEl = document.getElementById('count-estoque');
+
   const filterCat = document.getElementById('filter-cat');
   if (filterCat) {
     const cats = getCategorias();
@@ -222,7 +302,6 @@ export function renderEstoque() {
       cats.map(c => `<option ${c === currentVal ? 'selected' : ''}>${c}</option>`).join('');
   }
   
-  const countEl = document.getElementById('count-estoque');
   if (countEl) countEl.textContent = `${lista.length} itens encontrados`;
   
   const tbody = document.getElementById('tbody-estoque');
@@ -259,13 +338,11 @@ export function renderEstoque() {
   const listaPaginada = paginacaoEstoque.paginar(lista);
   
   // Atualiza contador
-  const countEl = document.getElementById('count-estoque');
   if (countEl) {
     countEl.textContent = `${paginacaoEstoque.totalItens} itens (pág. ${paginacaoEstoque.paginaAtual} de ${paginacaoEstoque.totalPaginas})`;
   }
   
   // Renderiza tabela
-  const tbody = document.getElementById('tbody-estoque');
   if (listaPaginada.length === 0) {
     tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text3)">Nenhuma peça encontrada.</td></tr>`;
   } else {
@@ -341,6 +418,7 @@ export function renderEstoque() {
       });
     });
   }
+}
 
 // ===== MOVIMENTOS =====
 export function renderMovimentos() {
@@ -634,94 +712,115 @@ export function inicializarEventos() {
     if (confirmCallback) { confirmCallback(); confirmCallback = null; }
     fecharModal('modal-confirmacao');
   });
-}
-
-// ===== PAGINAÇÃO =====
-
-/**
- * Classe para gerenciar paginação
- */
-export class Paginacao {
-  constructor(itensPorPagina = 10) {
-    this.itensPorPagina = itensPorPagina;
-    this.paginaAtual = 1;
-    this.totalItens = 0;
-  }
-
-  get totalPaginas() {
-    return Math.ceil(this.totalItens / this.itensPorPagina) || 1;
-  }
-
-  get offset() {
-    return (this.paginaAtual - 1) * this.itensPorPagina;
-  }
-
-  get limit() {
-    return this.itensPorPagina;
-  }
-
-  get temProxima() {
-    return this.paginaAtual < this.totalPaginas;
-  }
-
-  get temAnterior() {
-    return this.paginaAtual > 1;
-  }
-
-  proximaPagina() {
-    if (this.temProxima) this.paginaAtual++;
-  }
-
-  paginaAnterior() {
-    if (this.temAnterior) this.paginaAtual--;
-  }
-
-  irParaPagina(numero) {
-    if (numero >= 1 && numero <= this.totalPaginas) {
-      this.paginaAtual = numero;
-    }
-  }
-
-  resetar() {
-    this.paginaAtual = 1;
-  }
-
-  paginar(lista) {
-    this.totalItens = lista.length;
-    return lista.slice(this.offset, this.offset + this.limit);
-  }
-
-  getInfo() {
-    const inicio = this.offset + 1;
-    const fim = Math.min(this.offset + this.limit, this.totalItens);
-    return `${inicio}-${fim} de ${this.totalItens}`;
-  }
-}
-
-/**
- * Gera HTML dos controles de paginação
- */
-export function gerarHTMLPaginacao(paginacao, onMudarPagina) {
-  const p = paginacao;
   
-  return `
-    <div class="paginacao">
-      <div class="paginacao-info">
-        Mostrando ${p.getInfo()} itens
-      </div>
-      <div class="paginacao-controles">
-        <button class="btn btn-ghost btn-sm ${!p.temAnterior ? 'btn-disabled' : ''}" 
-                ${!p.temAnterior ? 'disabled' : ''} 
-                data-pagina="anterior">
-          ◀ Anterior
-        </button>
-        <span class="paginacao-paginas">Página ${p.paginaAtual} de ${p.totalPaginas}</span>
-        <button class="btn btn-ghost btn-sm ${!p.temProxima ? 'btn-disabled' : ''}" 
-                ${!p.temProxima ? 'disabled' : ''} 
-                data-pagina="proxima">
-          Próxima ▶
-        </button>
-      </div>
-    </div>
-  `;
-}}
+  // Exportar CSV
+document.getElementById('btn-exportar-estoque')?.addEventListener('click', () => {
+  import('./utils.js').then(m => m.exportarProdutosCSV(produtos));
+});
+
+document.getElementById('btn-exportar-movimentos')?.addEventListener('click', () => {
+  import('./utils.js').then(m => m.exportarMovimentosCSV(movimentos));
+});
+
+document.getElementById('btn-exportar-notas')?.addEventListener('click', () => {
+  import('./utils.js').then(m => m.exportarNotasCSV(notas));
+});
+}
+
+// ===== EXPORTAÇÃO PARA CSV =====
+
+/**
+ * Exporta dados para arquivo CSV
+ */
+export function exportarParaCSV(dados, nomeArquivo = 'exportacao.csv') {
+  if (!dados || dados.length === 0) {
+    mostrarToast('Nenhum dado para exportar!', 'error');
+    return;
+  }
+
+  const headers = Object.keys(dados[0]);
+  
+  const linhas = [
+    headers.join(';'),
+    ...dados.map(item => 
+      headers.map(h => {
+        let valor = item[h] || '';
+        if (typeof valor === 'string' && valor.includes(';')) {
+          valor = `"${valor}"`;
+        }
+        return valor;
+      }).join(';')
+    )
+  ];
+  
+  const BOM = '\uFEFF';
+  const csvContent = BOM + linhas.join('\n');
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = nomeArquivo;
+  link.click();
+  URL.revokeObjectURL(url);
+  
+  mostrarToast(`✅ Arquivo "${nomeArquivo}" exportado!`);
+}
+
+/**
+ * Exporta produtos para CSV
+ */
+export function exportarProdutosCSV(produtos) {
+  const dados = produtos.map(p => ({
+    'Codigo': p.codigo,
+    'Nome': p.nome,
+    'Categoria': p.categoria,
+    'Marca': p.marca || '',
+    'Localizacao': p.localizacao || '',
+    'Quantidade': p.qty,
+    'Estoque Minimo': p.min,
+    'Preco Custo': formatarMoeda(p.custo),
+    'Preco Venda': formatarMoeda(p.venda)
+  }));
+  
+  const data = new Date().toISOString().slice(0, 10);
+  exportarParaCSV(dados, `estoque_${data}.csv`);
+}
+
+/**
+ * Exporta movimentos para CSV
+ */
+export function exportarMovimentosCSV(movimentos) {
+  const dados = movimentos.map(m => ({
+    'Data': formatarData(m.data),
+    'Tipo': m.tipo.toUpperCase(),
+    'Peca': m.peca,
+    'Codigo': m.codigo,
+    'Quantidade': m.qty,
+    'Responsavel': m.resp,
+    'Observacao': m.obs || ''
+  }));
+  
+  const data = new Date().toISOString().slice(0, 10);
+  exportarParaCSV(dados, `movimentos_${data}.csv`);
+}
+
+/**
+ * Exporta notas fiscais para CSV
+ */
+export function exportarNotasCSV(notas) {
+  const dados = notas.map(n => ({
+    'Numero NF': `NF-${n.numero}`,
+    'Data': formatarData(n.data),
+    'Cliente': n.cliente,
+    'Documento': n.doc || '',
+    'Itens': n.itens.length,
+    'Subtotal': formatarMoeda(n.subtotal),
+    'Desconto': formatarMoeda(n.desconto || 0),
+    'Total': formatarMoeda(n.total),
+    'Pagamento': n.pagamento
+  }));
+  
+  const data = new Date().toISOString().slice(0, 10);
+  exportarParaCSV(dados, `notas_fiscais_${data}.csv`);
+}
