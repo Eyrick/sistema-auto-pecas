@@ -42,6 +42,11 @@ import {
   limparMascara
 } from './utils.js';
 
+import { 
+  Paginacao, 
+  gerarHTMLPaginacao 
+} from './utils.js';
+
 // ===== ESTADO DA UI =====
 let paginaAtual = 'dashboard';
 let filtroMovimentos = 'todos';
@@ -51,6 +56,10 @@ let confirmCallback = null;
 let notificacaoAtiva = false;
 let intervaloNotificacao = null;
 let chartCategorias = null;
+
+// ====== ESTADO DE PAGINAÇÃO =====
+let paginacaoEstoque = new Paginacao(10);
+let paginacaoMovimentos = new Paginacao(10);
 
 // ===== NAVEGAÇÃO =====
 export function mostrarPagina(nome) {
@@ -245,34 +254,93 @@ export function renderEstoque() {
     `;
   }).join('');
   
-  document.querySelectorAll('.btn-editar-produto').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = parseInt(btn.dataset.id);
-      const produto = editarProduto(id);
-      if (produto) {
-        document.getElementById('modal-prod-title').textContent = '✏️ Editar Peça';
-        document.getElementById('prod-codigo').value = produto.codigo;
-        document.getElementById('prod-nome').value = produto.nome;
-        document.getElementById('prod-cat').value = produto.categoria;
-        document.getElementById('prod-desc').value = produto.desc || '';
-        document.getElementById('prod-qty').value = produto.qty;
-        document.getElementById('prod-min').value = produto.min;
-        document.getElementById('prod-custo').value = produto.custo.toFixed(2);
-        document.getElementById('prod-venda').value = produto.venda.toFixed(2);
-        document.getElementById('prod-loc').value = produto.localizacao || '';
-        document.getElementById('prod-marca').value = produto.marca || '';
-        abrirModal('modal-produto');
-      }
-    });
-  });
+   // Aplica paginação
+  paginacaoEstoque.totalItens = lista.length;
+  const listaPaginada = paginacaoEstoque.paginar(lista);
   
-  document.querySelectorAll('.btn-excluir-produto').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = parseInt(btn.dataset.id);
-      solicitarExclusaoProduto(id);
+  // Atualiza contador
+  const countEl = document.getElementById('count-estoque');
+  if (countEl) {
+    countEl.textContent = `${paginacaoEstoque.totalItens} itens (pág. ${paginacaoEstoque.paginaAtual} de ${paginacaoEstoque.totalPaginas})`;
+  }
+  
+  // Renderiza tabela
+  const tbody = document.getElementById('tbody-estoque');
+  if (listaPaginada.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text3)">Nenhuma peça encontrada.</td></tr>`;
+  } else {
+    tbody.innerHTML = listaPaginada.map(p => {
+      let statusCls = 'stock-ok', statusTxt = 'OK';
+      if (p.qty === 0) { statusCls = 'stock-out'; statusTxt = 'ZERADO'; }
+      else if (p.qty <= p.min) { statusCls = 'stock-low'; statusTxt = 'BAIXO'; }
+      
+      return `
+        <tr>
+          <td><span class="code-tag">${p.codigo}</span></td>
+          <td>
+            <div style="font-weight:600">${p.nome}</div>
+            <div style="font-size:11px;color:var(--text3)">${p.marca||''}</div>
+          </td>
+          <td style="color:var(--text2)">${p.categoria}</td>
+          <td style="font-size:12px;color:var(--text3)">${p.localizacao||'—'}</td>
+          <td style="font-family:var(--font-mono);font-size:15px;font-weight:700">${p.qty}</td>
+          <td style="font-family:var(--font-mono);color:var(--text3)">${p.min}</td>
+          <td><span class="stock-badge ${statusCls}">${statusTxt}</span></td>
+          <td style="font-family:var(--font-mono)">R$ ${formatarMoeda(p.venda)}</td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost btn-sm btn-editar-produto" data-id="${p.id}">✏️</button>
+              <button class="btn btn-red btn-sm btn-excluir-produto" data-id="${p.id}">🗑️</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    
+    // Reaplica event listeners dos botões
+    document.querySelectorAll('.btn-editar-produto').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.dataset.id);
+        const produto = editarProduto(id);
+        if (produto) {
+          document.getElementById('modal-prod-title').textContent = '✏️ Editar Peça';
+          document.getElementById('prod-codigo').value = produto.codigo;
+          document.getElementById('prod-nome').value = produto.nome;
+          document.getElementById('prod-cat').value = produto.categoria;
+          document.getElementById('prod-desc').value = produto.desc || '';
+          document.getElementById('prod-qty').value = produto.qty;
+          document.getElementById('prod-min').value = produto.min;
+          document.getElementById('prod-custo').value = produto.custo.toFixed(2);
+          document.getElementById('prod-venda').value = produto.venda.toFixed(2);
+          document.getElementById('prod-loc').value = produto.localizacao || '';
+          document.getElementById('prod-marca').value = produto.marca || '';
+          abrirModal('modal-produto');
+        }
+      });
     });
-  });
-}
+    
+    document.querySelectorAll('.btn-excluir-produto').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.dataset.id);
+        solicitarExclusaoProduto(id);
+      });
+    });
+  }
+  
+  // Renderiza controles de paginação
+  const containerPaginacao = document.querySelector('#page-estoque .paginacao-container');
+  if (containerPaginacao) {
+    containerPaginacao.innerHTML = gerarHTMLPaginacao(paginacaoEstoque);
+    
+    containerPaginacao.querySelectorAll('[data-pagina]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const acao = btn.dataset.pagina;
+        if (acao === 'anterior') paginacaoEstoque.paginaAnterior();
+        else if (acao === 'proxima') paginacaoEstoque.proximaPagina();
+        renderEstoque();
+      });
+    });
+  }
 
 // ===== MOVIMENTOS =====
 export function renderMovimentos() {
@@ -567,3 +635,93 @@ export function inicializarEventos() {
     fecharModal('modal-confirmacao');
   });
 }
+
+// ===== PAGINAÇÃO =====
+
+/**
+ * Classe para gerenciar paginação
+ */
+export class Paginacao {
+  constructor(itensPorPagina = 10) {
+    this.itensPorPagina = itensPorPagina;
+    this.paginaAtual = 1;
+    this.totalItens = 0;
+  }
+
+  get totalPaginas() {
+    return Math.ceil(this.totalItens / this.itensPorPagina) || 1;
+  }
+
+  get offset() {
+    return (this.paginaAtual - 1) * this.itensPorPagina;
+  }
+
+  get limit() {
+    return this.itensPorPagina;
+  }
+
+  get temProxima() {
+    return this.paginaAtual < this.totalPaginas;
+  }
+
+  get temAnterior() {
+    return this.paginaAtual > 1;
+  }
+
+  proximaPagina() {
+    if (this.temProxima) this.paginaAtual++;
+  }
+
+  paginaAnterior() {
+    if (this.temAnterior) this.paginaAtual--;
+  }
+
+  irParaPagina(numero) {
+    if (numero >= 1 && numero <= this.totalPaginas) {
+      this.paginaAtual = numero;
+    }
+  }
+
+  resetar() {
+    this.paginaAtual = 1;
+  }
+
+  paginar(lista) {
+    this.totalItens = lista.length;
+    return lista.slice(this.offset, this.offset + this.limit);
+  }
+
+  getInfo() {
+    const inicio = this.offset + 1;
+    const fim = Math.min(this.offset + this.limit, this.totalItens);
+    return `${inicio}-${fim} de ${this.totalItens}`;
+  }
+}
+
+/**
+ * Gera HTML dos controles de paginação
+ */
+export function gerarHTMLPaginacao(paginacao, onMudarPagina) {
+  const p = paginacao;
+  
+  return `
+    <div class="paginacao">
+      <div class="paginacao-info">
+        Mostrando ${p.getInfo()} itens
+      </div>
+      <div class="paginacao-controles">
+        <button class="btn btn-ghost btn-sm ${!p.temAnterior ? 'btn-disabled' : ''}" 
+                ${!p.temAnterior ? 'disabled' : ''} 
+                data-pagina="anterior">
+          ◀ Anterior
+        </button>
+        <span class="paginacao-paginas">Página ${p.paginaAtual} de ${p.totalPaginas}</span>
+        <button class="btn btn-ghost btn-sm ${!p.temProxima ? 'btn-disabled' : ''}" 
+                ${!p.temProxima ? 'disabled' : ''} 
+                data-pagina="proxima">
+          Próxima ▶
+        </button>
+      </div>
+    </div>
+  `;
+}}

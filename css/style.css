@@ -582,3 +582,40 @@ textarea { resize: vertical; min-height: 80px; }
   color: white !important;
   border-color: var(--red) !important;
 }
+
+/* PAGINAÇÃO */
+.paginacao {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.paginacao-info {
+  font-size: 12px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+
+.paginacao-controles {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.paginacao-paginas {
+  font-size: 12px;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  min-width: 120px;
+  text-align: center;
+}
+
+.btn-disabled {
+  opacity: 0.4;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
