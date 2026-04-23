@@ -725,6 +725,36 @@ document.getElementById('btn-exportar-movimentos')?.addEventListener('click', ()
 document.getElementById('btn-exportar-notas')?.addEventListener('click', () => {
   import('./utils.js').then(m => m.exportarNotasCSV(notas));
 });
+  // Backup
+document.getElementById('btn-backup')?.addEventListener('click', () => {
+  import('./storage.js').then(m => {
+    m.criarBackup();
+    mostrarToast('💾 Backup criado com sucesso!');
+  });
+});
+
+// Restore - abre janela de seleção de arquivo
+document.getElementById('btn-restore')?.addEventListener('click', () => {
+  document.getElementById('input-restore')?.click();
+});
+
+// Restore - processa o arquivo selecionado
+document.getElementById('input-restore')?.addEventListener('change', (e) => {
+  const arquivo = e.target.files[0];
+  if (!arquivo) return;
+  
+  import('./storage.js').then(m => {
+    m.restaurarBackup(arquivo)
+      .then(() => {
+        mostrarToast('✅ Backup restaurado! Recarregando...');
+        setTimeout(() => location.reload(), 1500);
+      })
+      .catch(err => mostrarToast('❌ ' + err.message, 'error'));
+  });
+  
+  // Limpa o input para permitir selecionar o mesmo arquivo novamente
+  e.target.value = '';
+});
 }
 
 // ===== EXPORTAÇÃO PARA CSV =====

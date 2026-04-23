@@ -2,6 +2,7 @@
 
 import { inicializarProdutos } from './produtos.js';
 import { inicializarEventos, renderDashboard, populateSelects, iniciarMonitoramentoEstoque } from './ui.js';
+import { salvarBackupAutomatico } from './storage.js';
 
 /**
  * Inicializa a aplicação
@@ -22,6 +23,12 @@ function init() {
   
   // Inicia monitoramento de estoque baixo
   iniciarMonitoramentoEstoque();
+
+
+  // Backup automático diário (a cada 24 horas)
+  setInterval(salvarBackupAutomatico, 86400000);
+  // Primeiro backup após 10 segundos
+  setTimeout(salvarBackupAutomatico, 10000);
   
   console.log('✅ Sistema pronto!');
 }
