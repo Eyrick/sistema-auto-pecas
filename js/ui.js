@@ -154,7 +154,8 @@ export function mostrarPagina(nome) {
     movimentos: 'Movimentos',
     entrada: 'Entrada de Peças',
     saida: 'Saída / Venda',
-    notas: 'Notas Fiscais'
+    notas: 'Notas Fiscais',
+    orcamentos: 'Orçamentos',
   };
   document.getElementById('page-title').textContent = titulos[nome] || nome;
   
@@ -170,6 +171,7 @@ function renderizarPaginaAtual() {
     case 'entrada': populateSelects(); break;
     case 'saida': populateSelects(); renderSaidaItems(); break;
     case 'notas': renderNotas(); break;
+    case 'orcamentos': renderOrcamentos(); break;
   }
 }
 
@@ -533,7 +535,7 @@ function atualizarTotaisSaida() {
 
 // ===== SELECTS =====
 export function populateSelects() {
-  const selects = ['ent-peca', 'out-peca'];
+  const selects = ['ent-peca', 'out-peca', 'orc-peca'];  // ← ADICIONE 'orc-peca'
   selects.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -592,8 +594,18 @@ export function inicializarEventos() {
   
   document.querySelectorAll('[data-modal]').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      if (e.currentTarget.dataset.modal === 'modal-produto') limparFormProduto();
-      abrirModal(e.currentTarget.dataset.modal);
+      const modal = e.currentTarget.dataset.modal;
+      
+      // Só trata modais que NÃO são de orçamento
+      if (modal === 'modal-produto') {
+        limparFormProduto();
+        abrirModal(modal);
+      } else if (modal === 'modal-nf') {
+        abrirModal(modal);
+      } else if (modal === 'modal-confirmacao') {
+        abrirModal(modal);
+      }
+      // modal-orcamento é tratado pelo btn-novo-orcamento
     });
   });
   
@@ -713,6 +725,7 @@ export function inicializarEventos() {
     fecharModal('modal-confirmacao');
   });
   
+
   // Exportar CSV
 document.getElementById('btn-exportar-estoque')?.addEventListener('click', () => {
   import('./utils.js').then(m => m.exportarProdutosCSV(produtos));
@@ -725,6 +738,8 @@ document.getElementById('btn-exportar-movimentos')?.addEventListener('click', ()
 document.getElementById('btn-exportar-notas')?.addEventListener('click', () => {
   import('./utils.js').then(m => m.exportarNotasCSV(notas));
 });
+
+
   // Backup
 document.getElementById('btn-backup')?.addEventListener('click', () => {
   import('./storage.js').then(m => {
@@ -755,6 +770,44 @@ document.getElementById('input-restore')?.addEventListener('change', (e) => {
   // Limpa o input para permitir selecionar o mesmo arquivo novamente
   e.target.value = '';
 });
+
+// Novo Orçamento
+document.getElementById('btn-novo-orcamento')?.addEventListener('click', () => {
+  import('./orcamentos.js').then(m => {
+    m.limparOrcamentoAtual();
+    renderOrcamentoItems();
+    populateSelects();
+    abrirModal('modal-orcamento');
+  });
+});
+
+// Adicionar item ao orçamento
+document.getElementById('btn-add-item-orc')?.addEventListener('click', () => {
+  import('./orcamentos.js').then(m => {
+    const pecaId = parseInt(document.getElementById('orc-peca').value);
+    const qty = parseInt(document.getElementById('orc-qty').value);
+    if (m.adicionarItemOrcamento(pecaId, qty)) {
+      document.getElementById('orc-peca').value = '';
+      document.getElementById('orc-qty').value = 1;
+      renderOrcamentoItems();
+    }
+  });
+});
+
+// Salvar orçamento
+document.getElementById('btn-salvar-orcamento')?.addEventListener('click', () => {
+  import('./orcamentos.js').then(m => {
+    const cliente = document.getElementById('orc-cliente').value;
+    const doc = document.getElementById('orc-doc').value;
+    if (m.salvarOrcamento(cliente, doc)) {
+      document.getElementById('orc-cliente').value = '';
+      document.getElementById('orc-doc').value = '';
+      fecharModal('modal-orcamento');
+      renderOrcamentos();
+    }
+  });
+});
+
 }
 
 // ===== EXPORTAÇÃO PARA CSV =====
@@ -853,4 +906,99 @@ export function exportarNotasCSV(notas) {
   
   const data = new Date().toISOString().slice(0, 10);
   exportarParaCSV(dados, `notas_fiscais_${data}.csv`);
+}
+
+// ===== ORÇAMENTOS =====
+
+export function renderOrcamentos() {
+  import('./orcamentos.js').then(m => {
+    const lista = m.getTodosOrcamentos();
+    const tbody = document.getElementById('tbody-orcamentos');
+    
+    if (lista.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px">Nenhum orçamento cadastrado.</td></tr>`;
+      return;
+    }
+    
+    tbody.innerHTML = lista.map(o => {
+      let statusCls = 'stock-ok';
+      let statusTxt = 'Pendente';
+      if (o.status === 'aprovado') { statusCls = 'stock-ok'; statusTxt = '✅ Aprovado'; }
+      else if (o.status === 'recusado') { statusCls = 'stock-out'; statusTxt = '❌ Recusado'; }
+      
+      return `
+        <tr>
+          <td><span class="code-tag">#${o.numero}</span></td>
+          <td>${formatarData(o.data)}</td>
+          <td>${o.cliente}</td>
+          <td>${o.itens.length} item(s)</td>
+          <td>R$ ${formatarMoeda(o.total)}</td>
+          <td><span class="stock-badge ${statusCls}">${statusTxt}</span></td>
+          <td>
+            <div style="display:flex;gap:6px">
+              ${o.status === 'pendente' ? `
+                <button class="btn btn-green btn-sm btn-aprovar-orc" data-id="${o.id}">✅ Aprovar</button>
+                <button class="btn btn-red btn-sm btn-recusar-orc" data-id="${o.id}">❌ Recusar</button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    
+    document.querySelectorAll('.btn-aprovar-orc').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.dataset.id);
+        m.aprovarOrcamento(id);
+        renderOrcamentos();
+        atualizarUI();
+      });
+    });
+    
+    document.querySelectorAll('.btn-recusar-orc').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.dataset.id);
+        m.recusarOrcamento(id);
+        renderOrcamentos();
+      });
+    });
+  });
+}
+
+export function renderOrcamentoItems() {
+  import('./orcamentos.js').then(m => {
+    const items = m.getOrcamentoAtual();
+    const el = document.getElementById('orc-items');
+    
+    if (items.length === 0) {
+      el.innerHTML = '<p style="color:var(--text3);text-align:center;padding:20px">Nenhum item adicionado.</p>';
+    } else {
+      el.innerHTML = `
+        <table style="width:100%;font-size:13px">
+          <thead><tr><th>Peça</th><th>Qtd</th><th>Unit.</th><th>Total</th><th></th></tr></thead>
+          <tbody>
+            ${items.map((i, idx) => `
+              <tr>
+                <td><div style="font-weight:600">${i.nome}</div><div style="font-size:11px">${i.codigo}</div></td>
+                <td>${i.qty}</td>
+                <td>R$ ${formatarMoeda(i.preco)}</td>
+                <td>R$ ${formatarMoeda(i.preco * i.qty)}</td>
+                <td><button class="btn btn-red btn-sm btn-remover-orc" data-idx="${idx}">✕</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      
+      document.querySelectorAll('.btn-remover-orc').forEach(btn => {
+        btn.addEventListener('click', () => {
+          m.removerItemOrcamento(parseInt(btn.dataset.idx));
+          renderOrcamentoItems();
+          document.getElementById('orc-total').textContent = 'R$ ' + formatarMoeda(m.calcularTotalOrcamento());
+        });
+      });
+    }
+    
+    document.getElementById('orc-total').textContent = 'R$ ' + formatarMoeda(m.calcularTotalOrcamento());
+  });
 }
